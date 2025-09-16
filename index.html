@@ -23,11 +23,11 @@
         <!-- Header -->
         <div class="bg-slate-800 text-white p-4 flex items-center justify-between shadow-md">
             <div>
-                <h1 class="text-xl font-bold">Communication Assistant</h1>
-                <p class="text-sm text-slate-300">Drafting messages for Mr. VM</p>
+                <h1 class="text-xl font-bold">Trợ Lý Giao Tiếp</h1>
+                <p class="text-sm text-slate-300">Soạn thảo tin nhắn cho Mr. VM</p>
             </div>
             <div class="flex items-center gap-2">
-                <div id="status-indicator" class="status-dot bg-yellow-400" title="Checking Connection..."></div>
+                <div id="status-indicator" class="status-dot bg-yellow-400" title="Đang kiểm tra kết nối..."></div>
                 <p id="status-text" class="text-sm text-slate-300 font-medium"></p>
             </div>
         </div>
@@ -58,7 +58,7 @@
         <template id="error-template">
              <div class="chat-bubble chat-bubble-assistant bg-red-100 text-red-800 border border-red-200">
                 <p id="error-text"></p>
-                <button id="retry-btn" class="mt-2 bg-red-500 text-white px-3 py-1 text-sm rounded-full hover:bg-red-600">Thử lại</button>
+                <button id="troubleshoot-btn" class="mt-2 bg-red-500 text-white px-3 py-1 text-sm rounded-full hover:bg-red-600">Báo cáo sự cố</button>
             </div>
         </template>
         <!-- Input Area -->
@@ -75,7 +75,6 @@
         const WEBHOOK_URL = "https://chat.googleapis.com/v1/spaces/AAQAiKcUF_s/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=ooQYDDBEuU2XVgL41yMu5kSjBSj8ISmbDz1R_apJ0aA";
         const API_KEY = "AIzaSyDEzX8QpqzThzO3hmBYVLAh_w2nVyRhcrI";
         const ERROR_REPORT_EMAIL = "vm@vardhmanmehta.com";
-        const GEMINI_MODEL = "gemini-2.5-flash-preview-05-20";
         // ===================================================
 
         // --- DOM Elements ---
@@ -84,6 +83,7 @@
         const messageInput = document.getElementById('message-input');
         const statusIndicator = document.getElementById('status-indicator');
         const statusText = document.getElementById('status-text');
+        // --- Templates ---
         const userMessageTemplate = document.getElementById('user-message-template');
         const explanationTemplate = document.getElementById('explanation-template');
         const finalConfirmationTemplate = document.getElementById('final-confirmation-template');
@@ -95,73 +95,66 @@
 
         // --- Event Listeners ---
         document.addEventListener('DOMContentLoaded', runHealthCheck);
-        messageForm.addEventListener('submit', handleFormSubmit);
+        messageForm.addEventListener('submit', (e) => { e.preventDefault(); if (messageInput.value.trim() !== '') handleTextMessage(messageInput.value.trim()); });
         messageInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                handleFormSubmit(e);
+                messageForm.requestSubmit();
             }
         });
 
-        function handleFormSubmit(e) {
-            e.preventDefault();
-            const text = messageInput.value.trim();
-            if (text) {
-                handleTextMessage(text);
-            }
-        }
-        
         // --- Core Logic ---
         async function handleTextMessage(text) {
             lastAction = { type: 'text', content: text, error: null };
             originalMessage = text;
             displayUserMessage(text);
             messageInput.value = '';
-            toggleAllInputs(false);
+            toggleAllInputs(false); 
             displayLoading();
             try {
-                const result = await callGeminiForPolish(text);
-                removeLoading();
+                const result = await callGeminiForPolishAndTranslate(text);
+                removeLoading(); 
                 displayExplanation(result);
-            } catch (error) {
-                handleError(error, "Error calling AI assistant");
+            } catch (error) { 
+                handleError(error, "lỗi khi gọi AI soạn thảo"); 
             }
         }
 
-        function retryLastAction() {
-            const lastErrorBubble = chatContainer.querySelector('.bg-red-100');
-            if (lastErrorBubble) {
-                lastErrorBubble.parentElement.remove();
-            }
-            if (lastAction.type === 'text') {
-                handleTextMessage(lastAction.content);
-            }
+        function handleTroubleshoot() {
+            const time = new Date().toISOString();
+            const browser = `${navigator.userAgent}`;
+            const errorDetails = lastAction.error ? `${lastAction.error.name}: ${lastAction.error.message}` : "No specific error object captured.";
+            
+            const subject = `Error in App - ${time}`;
+            const body = `Hi Mr. VM,\n\nThe application encountered an error. Here are the details:\n\n- Time: ${time}\n- Last Action: ${lastAction.type}\n- Browser: ${browser}\n- Error Details: ${errorDetails}\n\nPlease review this log.\n\nThank you.`;
+            
+            window.location.href = `mailto:${ERROR_REPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
         }
 
         // --- API Calls ---
         async function runHealthCheck() {
-            statusText.textContent = "Checking...";
+            statusText.textContent = "Đang kiểm tra...";
             if (!navigator.onLine) {
-                return handleError(new Error("No internet connection"), "Network connection error");
+                return handleError(new Error("No internet connection"), "lỗi kết nối mạng");
             }
             try {
                 const healthCheckPayload = { contents: [{ parts: [{ text: "Hi" }] }] };
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${API_KEY}`;
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest?key=${API_KEY}`;
                 const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(healthCheckPayload) });
                 if (!response.ok) throw new Error(`API returned status ${response.status}`);
                 
                 statusIndicator.classList.remove('bg-yellow-400', 'bg-red-500');
                 statusIndicator.classList.add('bg-green-400');
                 statusIndicator.title = "API Status: Online";
-                statusText.textContent = "Working";
+                statusText.textContent = "Hoạt động";
                 toggleAllInputs(true);
             } catch (error) {
-                handleError(error, "API connection error");
+                handleError(error, "lỗi kết nối API");
             }
         }
 
         async function callApi(payload) {
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${API_KEY}`;
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest?key=${API_KEY}`;
             const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             if (!response.ok) throw new Error(`API Error ${response.status}`);
             const result = await response.json();
@@ -170,8 +163,9 @@
             return JSON.parse(jsonString);
         }
 
-        function callGeminiForPolish(text) {
-            const systemPrompt = `You are a helpful communication coach for a Vietnamese staff member. Return a JSON object with: 1. 'polishedVietnamese': A professional VIETNAMESE version. 2. 'englishTranslation': An ENGLISH translation of the polished text.`;
+        // OPTIMIZED: This function now gets all required translations in a single API call.
+        function callGeminiForPolishAndTranslate(text) {
+            const systemPrompt = `You are a helpful communication coach for a Vietnamese staff member. Return a JSON object with: 1. 'polishedVietnamese': A more professional version of the message in VIETNAMESE. 2. 'explanation': A simple explanation in VIETNAMESE. 3. 'englishTranslationOfPolished': A perfect ENGLISH translation of the 'polishedVietnamese' text. 4. 'englishTranslationOfOriginal': A perfect ENGLISH translation of the original raw message.`;
             const payload = { 
                 systemInstruction: { parts: [{ text: systemPrompt }] }, 
                 contents: [{ parts: [{ text: `Raw message: "${text}"` }] }], 
@@ -181,25 +175,15 @@
                         type: "OBJECT", 
                         properties: { 
                             "polishedVietnamese": { "type": "STRING" }, 
-                            "englishTranslation": { "type": "STRING" }
+                            "explanation": { "type": "STRING" }, 
+                            "englishTranslationOfPolished": { "type": "STRING" },
+                            "englishTranslationOfOriginal": { "type": "STRING" }
                         }, 
-                        required: ["polishedVietnamese", "englishTranslation"] 
+                        required: ["polishedVietnamese", "explanation", "englishTranslationOfPolished", "englishTranslationOfOriginal"] 
                     } 
                 } 
             };
             return callApi(payload);
-        }
-
-        async function callGeminiForTranslate(text) {
-             const systemPrompt = "You are an efficient translation engine. Translate the given Vietnamese text to professional English. Return ONLY the translated English text.";
-             const payload = { contents: [{ parts: [{ text }] }] };
-             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${API_KEY}`;
-             const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-             if (!response.ok) throw new Error(`API Error ${response.status}`);
-             const result = await response.json();
-             const translatedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-             if (!translatedText) throw new Error("Invalid translation response from API.");
-             return translatedText.trim();
         }
         
         async function sendToWebhook(textPayload) {
@@ -209,32 +193,27 @@
                 if (!response.ok) throw new Error('Webhook failed');
                 displayFinalConfirmation();
             } catch (error) {
-                 handleError(error, "Error sending message to Google Chat");
+                 handleError(error, "lỗi khi gửi tin nhắn tới Google Chat");
             }
         }
 
         // --- UI Functions ---
         function displayUserMessage(text) { const node = userMessageTemplate.content.cloneNode(true); node.querySelector('.chat-bubble-user').textContent = text; chatContainer.appendChild(node); scrollToBottom(); }
         
-        function displayExplanation({ polishedVietnamese, englishTranslation }) { 
+        // OPTIMIZED: This function now receives all data at once.
+        function displayExplanation({ polishedVietnamese, explanation, englishTranslationOfPolished, englishTranslationOfOriginal }) { 
             const node = explanationTemplate.content.cloneNode(true);
             node.getElementById('polished-text-display').innerText = polishedVietnamese;
             
-            node.getElementById('use-original-btn').addEventListener('click', async () => {
+            // "Send Original" button is now instant, no API call needed.
+            node.getElementById('use-original-btn').addEventListener('click', () => {
                 removeChoiceButtons(); 
-                displayLoading();
-                try {
-                    const translatedOriginal = await callGeminiForTranslate(originalMessage);
-                    removeLoading();
-                    await sendToWebhook(`🇻🇳 *Vietnamese:*\n${originalMessage}\n\n🇬🇧 *English:*\n${translatedOriginal}`);
-                } catch (e) {
-                    handleError(e, "Error translating original message");
-                }
+                sendToWebhook(`🇻🇳 *Vietnamese:*\n${originalMessage}\n\n🇬🇧 *English:*\n${englishTranslationOfOriginal}`);
             });
 
             node.getElementById('use-polished-btn').addEventListener('click', () => {
                 removeChoiceButtons();
-                sendToWebhook(`🇻🇳 *Vietnamese:*\n${polishedVietnamese}\n\n🇬🇧 *English:*\n${englishTranslation}`);
+                sendToWebhook(`🇻🇳 *Vietnamese:*\n${polishedVietnamese}\n\n🇬🇧 *English:*\n${englishTranslationOfPolished}`);
             });
             chatContainer.appendChild(node); scrollToBottom();
         }
@@ -245,7 +224,7 @@
         function displayFinalConfirmation() { 
             const node = finalConfirmationTemplate.content.cloneNode(true); 
             const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            node.getElementById('timestamp').textContent = `Sent at ${time}`;
+            node.getElementById('timestamp').textContent = `Đã gửi lúc ${time}`;
             chatContainer.appendChild(node); 
             scrollToBottom(); 
             toggleAllInputs(true); 
@@ -253,8 +232,8 @@
 
         function displayErrorMessage(message) { 
             const node = errorTemplate.content.cloneNode(true);
-            node.querySelector('#error-text').innerHTML = message;
-            node.getElementById('retry-btn').addEventListener('click', retryLastAction);
+            node.getElementById('error-text').textContent = message;
+            node.getElementById('troubleshoot-btn').addEventListener('click', handleTroubleshoot);
             chatContainer.appendChild(node); 
             scrollToBottom();
         }
@@ -271,25 +250,20 @@
             console.error(`${context}:`, error);
             lastAction.error = error;
             removeLoading();
-            let userMessage = `Sorry, an error occurred: ${context}.`;
-            // All user-facing error messages are now in English for the developer.
-            if (context === "Network connection error") {
-                userMessage = "You are not connected to the internet. Please check and try again.";
-            } else if (context === "API connection error") {
-                 userMessage = "Could not connect to the AI assistant. Please check your API Key and project settings.";
-            }
-
+            let userMessage = `Xin lỗi, đã có ${context}.`;
+            if (context === "lỗi kết nối mạng") userMessage = "Bạn không có kết nối internet. Vui lòng kiểm tra và thử lại.";
+            if (context === "lỗi kết nối API") userMessage = "Kết nối tới trợ lý AI không thành công.";
             displayErrorMessage(userMessage); 
-            toggleAllInputs(true); // Re-enable input for retry
+            toggleAllInputs(false);
             
             statusIndicator.classList.remove('bg-yellow-400', 'bg-green-400');
             statusIndicator.classList.add('bg-red-500');
             statusIndicator.title = `API Status: Offline - ${error.message}`;
-            statusText.textContent = "Error";
+            statusText.textContent = "Lỗi";
         }
 
         function scrollToBottom() { chatContainer.scrollTop = chatContainer.scrollHeight; }
+
     </script>
 </body>
 </html>
-
