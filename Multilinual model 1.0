@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trợ Lý Giao Tiếp</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .chat-bubble { max-width: 80%; padding: 12px 16px; border-radius: 20px; word-wrap: break-word; opacity: 0; transform: translateY(10px); animation: fadeIn 0.3s forwards; }
+        @keyframes fadeIn { to { opacity: 1; transform: translateY(0); } }
+        .chat-bubble-user { background-color: #3b82f6; color: white; border-bottom-right-radius: 4px; align-self: flex-end; }
+        .chat-bubble-assistant { background-color: #e5e7eb; color: #1f2937; border-bottom-left-radius: 4px; align-self: flex-start; }
+        #chat-container::-webkit-scrollbar { width: 6px; }
+        #chat-container::-webkit-scrollbar-track { background: #f1f5f9; }
+        #chat-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .status-dot { width: 12px; height: 12px; border-radius: 50%; transition: background-color 0.5s; }
+    </style>
+</head>
+<body class="bg-slate-100 flex items-center justify-center min-h-screen">
+    <div id="main-app" class="w-full max-w-lg mx-auto bg-white rounded-2xl shadow-2xl flex flex-col h-[90vh] overflow-hidden">
+        <!-- Header -->
+        <div class="bg-slate-800 text-white p-4 flex items-center justify-between shadow-md">
+            <div>
+                <h1 class="text-xl font-bold">Communication Assistant</h1>
+                <p class="text-sm text-slate-300">Drafting messages for Mr. VM</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <div id="status-indicator" class="status-dot bg-yellow-400" title="Checking Connection..."></div>
+                <p id="status-text" class="text-sm text-slate-300 font-medium"></p>
+            </div>
+        </div>
+        <!-- Chat Area -->
+        <div id="chat-container" class="flex-1 p-6 space-y-4 overflow-y-auto">
+             <div class="chat-bubble chat-bubble-assistant">Chào bạn. Vui lòng soạn tin nhắn của bạn vào ô bên dưới.</div>
+        </div>
+        <!-- Templates -->
+        <template id="explanation-template">
+            <div class="chat-bubble chat-bubble-assistant">
+                <p class="font-semibold mb-2">Đây là phiên bản đề xuất:</p>
+                
+                <div class="bg-white/80 p-3 rounded-lg border border-slate-300 mb-3 space-y-2">
+                    <div>
+                        <p class="font-semibold text-sm text-slate-600">🇻🇳 Tiếng Việt:</p>
+                        <p id="polished-text-display" class="italic text-slate-800"></p>
+                    </div>
+                    <hr>
+                    <div>
+                        <p class="font-semibold text-sm text-slate-600">🇬🇧 Tiếng Anh (sẽ được gửi):</p>
+                        <p id="english-text-display" class="italic text-slate-800"></p>
+                    </div>
+                     <hr>
+                    <div>
+                        <p class="font-semibold text-sm text-slate-600">🇨🇳 Tiếng Trung (sẽ được gửi):</p>
+                        <p id="chinese-text-display" class="italic text-slate-800"></p>
+                    </div>
+                </div>
+
+                <p id="explanation-text" class="text-sm mb-3"></p>
+                <p class="font-semibold">Bạn muốn gửi phiên bản gốc hay phiên bản đề xuất?</p>
+                <div class="mt-3 flex gap-2">
+                    <button id="use-original-btn" class="bg-slate-500 text-white px-4 py-1 rounded-full text-sm hover:bg-slate-600">Gửi bản gốc</button>
+                    <button id="use-polished-btn" class="bg-blue-600 text-white px-4 py-1 rounded-full text-sm hover:bg-blue-700">Gửi bản đề xuất</button>
+                </div>
+            </div>
+        </template>
+        <template id="user-message-template"><div class="chat-bubble chat-bubble-user"></div></template>
+        <template id="loading-template"><div id="loading-bubble" class="chat-bubble chat-bubble-assistant"><div class="loading-dots"><span></span><span></span><span></span></div></div></template>
+        <template id="final-confirmation-template">
+            <div class="chat-bubble chat-bubble-assistant">
+                <p>Hoàn thành! Tin nhắn của bạn đã được gửi.</p>
+                <p class="text-xs text-slate-500 mt-2 text-right" id="timestamp"></p>
+            </div>
+        </template>
+        <template id="error-template">
+             <div class="chat-bubble chat-bubble-assistant bg-red-100 text-red-800 border border-red-200">
+                <p id="error-text"></p>
+                <button id="retry-btn" class="mt-2 bg-red-500 text-white px-3 py-1 text-sm rounded-full hover:bg-red-600">Thử lại</button>
+            </div>
+        </template>
+        <!-- Input Area -->
+        <div class="p-4 bg-slate-50 border-t border-slate-200">
+            <form id="message-form" class="flex items-center gap-3">
+                <textarea id="message-input" rows="1" class="flex-1 p-3 bg-white border border-slate-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" placeholder="Nhập tin nhắn..."></textarea>
+                <button type="submit" class="bg-blue-600 text-white rounded-full p-3 hover:bg-blue-700 transition-transform duration-150 active:scale-95"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // ================== CONFIGURATION ==================
+        const WEBHOOK_URL = "https://chat.googleapis.com/v1/spaces/AAQAiKcUF_s/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=ooQYDDBEuU2XVgL41yMu5kSjBSj8ISmbDz1R_apJ0aA";
+        const API_KEY = "AIzaSyDEzX8QpqzThzO3hmBYVLAh_w2nVyRhcrI";
+        const ERROR_REPORT_EMAIL = "vm@vardhmanmehta.com";
+        const GEMINI_MODEL = "gemini-2.5-flash-preview-05-20";
+        // ===================================================
+
+        // --- DOM Elements ---
+        const chatContainer = document.getElementById('chat-container');
+        const messageForm = document.getElementById('message-form');
+        const messageInput = document.getElementById('message-input');
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusText = document.getElementById('status-text');
+        const userMessageTemplate = document.getElementById('user-message-template');
+        const explanationTemplate = document.getElementById('explanation-template');
+        const finalConfirmationTemplate = document.getElementById('final-confirmation-template');
+        const loadingTemplate = document.getElementById('loading-template');
+        const errorTemplate = document.getElementById('error-template');
+
+        let originalMessage = '';
+        let lastAction = { type: null, content: null, error: null };
+
+        // --- Event Listeners ---
+        document.addEventListener('DOMContentLoaded', runHealthCheck);
+        messageForm.addEventListener('submit', handleFormSubmit);
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleFormSubmit(e);
+            }
+        });
+
+        function handleFormSubmit(e) {
+            e.preventDefault();
+            const text = messageInput.value.trim();
+            if (text) {
+                handleTextMessage(text);
+            }
+        }
+        
+        // --- Core Logic ---
+        async function handleTextMessage(text) {
+            lastAction = { type: 'text', content: text, error: null };
+            originalMessage = text;
+            displayUserMessage(text);
+            messageInput.value = '';
+            toggleAllInputs(false);
+            displayLoading();
+            try {
+                const result = await callGeminiForMultilingual(text);
+                removeLoading();
+                displayExplanation(result);
+            } catch (error) {
+                handleError(error, "Error calling AI assistant");
+            }
+        }
+
+        function retryLastAction() {
+            const lastErrorBubble = chatContainer.querySelector('.bg-red-100');
+            if (lastErrorBubble) {
+                lastErrorBubble.parentElement.remove();
+            }
+            if (lastAction.type === 'text') {
+                handleTextMessage(lastAction.content);
+            }
+        }
+
+        // --- API Calls ---
+        async function runHealthCheck() {
+            statusText.textContent = "Checking...";
+            if (!navigator.onLine) {
+                return handleError(new Error("No internet connection"), "Network connection error");
+            }
+            try {
+                const healthCheckPayload = { contents: [{ parts: [{ text: "Hi" }] }] };
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${API_KEY}`;
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(healthCheckPayload) });
+                if (!response.ok) throw new Error(`API returned status ${response.status}`);
+                
+                statusIndicator.classList.remove('bg-yellow-400', 'bg-red-500');
+                statusIndicator.classList.add('bg-green-400');
+                statusIndicator.title = "API Status: Online";
+                statusText.textContent = "Working";
+                toggleAllInputs(true);
+            } catch (error) {
+                handleError(error, "API connection error");
+            }
+        }
+
+        async function callApi(payload) {
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${API_KEY}`;
+            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (!response.ok) throw new Error(`API Error ${response.status}`);
+            const result = await response.json();
+            const jsonString = result.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!jsonString) throw new Error("Invalid response structure from API.");
+            return JSON.parse(jsonString);
+        }
+
+        function callGeminiForMultilingual(text) {
+            const systemPrompt = `You are a helpful communication coach for a Vietnamese staff member. Return a JSON object with six keys: 
+                1. 'polishedVietnamese': A professional VIETNAMESE version. 
+                2. 'explanation': A simple VIETNAMESE explanation. 
+                3. 'englishTranslationOfPolished': An ENGLISH translation of the polished text. 
+                4. 'englishTranslationOfOriginal': An ENGLISH translation of the original raw message.
+                5. 'chineseTranslationOfPolished': A CHINESE (Simplified) translation of the polished text.
+                6. 'chineseTranslationOfOriginal': A CHINESE (Simplified) translation of the original raw message.`;
+            const payload = { 
+                systemInstruction: { parts: [{ text: systemPrompt }] }, 
+                contents: [{ parts: [{ text: `Raw message: "${text}"` }] }], 
+                generationConfig: { 
+                    responseMimeType: "application/json", 
+                    responseSchema: { 
+                        type: "OBJECT", 
+                        properties: { 
+                            "polishedVietnamese": { "type": "STRING" }, 
+                            "explanation": { "type": "STRING" },
+                            "englishTranslationOfPolished": { "type": "STRING" },
+                            "englishTranslationOfOriginal": { "type": "STRING" },
+                            "chineseTranslationOfPolished": { "type": "STRING" },
+                            "chineseTranslationOfOriginal": { "type": "STRING" }
+                        }, 
+                        required: ["polishedVietnamese", "explanation", "englishTranslationOfPolished", "englishTranslationOfOriginal", "chineseTranslationOfPolished", "chineseTranslationOfOriginal"] 
+                    } 
+                } 
+            };
+            return callApi(payload);
+        }
+        
+        async function sendToWebhook(payload) {
+            try {
+                const response = await fetch(WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=UTF-8' }, body: JSON.stringify(payload) });
+                if (!response.ok) throw new Error('Webhook failed');
+                displayFinalConfirmation();
+            } catch (error) {
+                 handleError(error, "Error sending message to Google Chat");
+            }
+        }
+
+        // --- UI Functions ---
+        function displayUserMessage(text) { const node = userMessageTemplate.content.cloneNode(true); node.querySelector('.chat-bubble-user').textContent = text; chatContainer.appendChild(node); scrollToBottom(); }
+        
+        function displayExplanation(result) { 
+            const node = explanationTemplate.content.cloneNode(true);
+            node.getElementById('polished-text-display').innerText = result.polishedVietnamese;
+            node.getElementById('english-text-display').innerText = result.englishTranslationOfPolished;
+            node.getElementById('chinese-text-display').innerText = result.chineseTranslationOfPolished;
+            node.getElementById('explanation-text').innerText = result.explanation;
+            
+            node.getElementById('use-original-btn').addEventListener('click', () => {
+                removeChoiceButtons();
+                const textPayload = `🇻🇳 *Vietnamese:*\n${originalMessage}\n\n🇬🇧 *English:*\n${result.englishTranslationOfOriginal}\n\n🇨🇳 *Chinese:*\n${result.chineseTranslationOfOriginal}`;
+                sendToWebhook({ 'text': textPayload });
+            });
+
+            node.getElementById('use-polished-btn').addEventListener('click', () => {
+                removeChoiceButtons();
+                const textPayload = `🇻🇳 *Vietnamese:*\n${result.polishedVietnamese}\n\n🇬🇧 *English:*\n${result.englishTranslationOfPolished}\n\n🇨🇳 *Chinese:*\n${result.chineseTranslationOfPolished}`;
+                sendToWebhook({ 'text': textPayload });
+            });
+            chatContainer.appendChild(node); scrollToBottom();
+        }
+
+        function displayLoading() { const node = loadingTemplate.content.cloneNode(true); chatContainer.appendChild(node); scrollToBottom(); }
+        function removeLoading() { document.getElementById('loading-bubble')?.remove(); }
+
+        function displayFinalConfirmation() { 
+            const node = finalConfirmationTemplate.content.cloneNode(true); 
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            node.getElementById('timestamp').textContent = `Sent at ${time}`;
+            chatContainer.appendChild(node); 
+            scrollToBottom(); 
+            toggleAllInputs(true); 
+        }
+
+        function displayErrorMessage(message) { 
+            const node = errorTemplate.content.cloneNode(true);
+            node.querySelector('#error-text').innerHTML = message;
+            node.getElementById('retry-btn').addEventListener('click', retryLastAction);
+            chatContainer.appendChild(node); 
+            scrollToBottom();
+        }
+
+        function removeChoiceButtons() { chatContainer.querySelectorAll('.chat-bubble button').forEach(btn => btn.closest('.flex.gap-2')?.remove()); }
+        
+        function toggleAllInputs(enabled) { 
+            messageInput.disabled = !enabled;
+            messageForm.querySelector('button').disabled = !enabled; 
+            if (enabled) messageInput.focus(); 
+        }
+
+        function handleError(error, context) {
+            console.error(`${context}:`, error);
+            lastAction.error = error;
+            removeLoading();
+            let userMessage = `Sorry, an error occurred: ${context}.`;
+            if (context === "Network connection error") {
+                userMessage = "You are not connected to the internet. Please check and try again.";
+            } else if (context === "API connection error") {
+                 userMessage = "Could not connect to the AI assistant. Please check your API Key and project settings.";
+            }
+
+            displayErrorMessage(userMessage); 
+            toggleAllInputs(true);
+            
+            statusIndicator.classList.remove('bg-yellow-400', 'bg-green-400');
+            statusIndicator.classList.add('bg-red-500');
+            statusIndicator.title = `API Status: Offline - ${error.message}`;
+            statusText.textContent = "Error";
+        }
+
+        function scrollToBottom() { chatContainer.scrollTop = chatContainer.scrollHeight; }
+    </script>
+</body>
+</html>
