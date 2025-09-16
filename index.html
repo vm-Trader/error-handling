@@ -39,7 +39,24 @@
         <template id="explanation-template">
             <div class="chat-bubble chat-bubble-assistant">
                 <p class="font-semibold mb-2">Đây là phiên bản đề xuất:</p>
-                <div class="bg-white/80 p-3 rounded-lg border border-slate-300 mb-3 whitespace-pre-wrap"><p id="polished-text-display" class="italic text-slate-800"></p></div>
+                
+                <div class="bg-white/80 p-3 rounded-lg border border-slate-300 mb-3 space-y-2">
+                    <div>
+                        <p class="font-semibold text-sm text-slate-600">🇻🇳 Tiếng Việt:</p>
+                        <p id="polished-text-display" class="italic text-slate-800"></p>
+                    </div>
+                    <hr>
+                    <div>
+                        <p class="font-semibold text-sm text-slate-600">🇬🇧 Tiếng Anh (sẽ được gửi):</p>
+                        <p id="english-text-display" class="italic text-slate-800"></p>
+                    </div>
+                     <hr>
+                    <div>
+                        <p class="font-semibold text-sm text-slate-600">🇨🇳 Tiếng Trung (sẽ được gửi):</p>
+                        <p id="chinese-text-display" class="italic text-slate-800"></p>
+                    </div>
+                </div>
+
                 <p id="explanation-text" class="text-sm mb-3"></p>
                 <p class="font-semibold">Bạn muốn gửi phiên bản gốc hay phiên bản đề xuất?</p>
                 <div class="mt-3 flex gap-2">
@@ -121,8 +138,7 @@
             toggleAllInputs(false);
             displayLoading();
             try {
-                // OPTIMIZED: Now uses the single-call function
-                const result = await callGeminiForPolishAndTranslate(text);
+                const result = await callGeminiForMultilingual(text);
                 removeLoading();
                 displayExplanation(result);
             } catch (error) {
@@ -172,9 +188,14 @@
             return JSON.parse(jsonString);
         }
 
-        // OPTIMIZED: This function now gets all required translations in a single API call.
-        function callGeminiForPolishAndTranslate(text) {
-            const systemPrompt = `You are a helpful communication coach for a Vietnamese staff member. Return a JSON object with: 1. 'polishedVietnamese': A professional VIETNAMESE version. 2. 'explanation': A simple VIETNAMESE explanation. 3. 'englishTranslationOfPolished': An ENGLISH translation of the polished text. 4. 'englishTranslationOfOriginal': An ENGLISH translation of the original raw message.`;
+        function callGeminiForMultilingual(text) {
+            const systemPrompt = `You are a helpful communication coach for a Vietnamese staff member. Return a JSON object with six keys: 
+                1. 'polishedVietnamese': A professional VIETNAMESE version. 
+                2. 'explanation': A simple VIETNAMESE explanation. 
+                3. 'englishTranslationOfPolished': An ENGLISH translation of the polished text. 
+                4. 'englishTranslationOfOriginal': An ENGLISH translation of the original raw message.
+                5. 'chineseTranslationOfPolished': A CHINESE (Simplified) translation of the polished text.
+                6. 'chineseTranslationOfOriginal': A CHINESE (Simplified) translation of the original raw message.`;
             const payload = { 
                 systemInstruction: { parts: [{ text: systemPrompt }] }, 
                 contents: [{ parts: [{ text: `Raw message: "${text}"` }] }], 
@@ -186,17 +207,18 @@
                             "polishedVietnamese": { "type": "STRING" }, 
                             "explanation": { "type": "STRING" },
                             "englishTranslationOfPolished": { "type": "STRING" },
-                            "englishTranslationOfOriginal": { "type": "STRING" }
+                            "englishTranslationOfOriginal": { "type": "STRING" },
+                            "chineseTranslationOfPolished": { "type": "STRING" },
+                            "chineseTranslationOfOriginal": { "type": "STRING" }
                         }, 
-                        required: ["polishedVietnamese", "explanation", "englishTranslationOfPolished", "englishTranslationOfOriginal"] 
+                        required: ["polishedVietnamese", "explanation", "englishTranslationOfPolished", "englishTranslationOfOriginal", "chineseTranslationOfPolished", "chineseTranslationOfOriginal"] 
                     } 
                 } 
             };
             return callApi(payload);
         }
         
-        async function sendToWebhook(textPayload) {
-            const payload = { 'text': textPayload };
+        async function sendToWebhook(payload) {
             try {
                 const response = await fetch(WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=UTF-8' }, body: JSON.stringify(payload) });
                 if (!response.ok) throw new Error('Webhook failed');
@@ -209,21 +231,23 @@
         // --- UI Functions ---
         function displayUserMessage(text) { const node = userMessageTemplate.content.cloneNode(true); node.querySelector('.chat-bubble-user').textContent = text; chatContainer.appendChild(node); scrollToBottom(); }
         
-        // OPTIMIZED: This function now receives all data at once.
-        function displayExplanation({ polishedVietnamese, explanation, englishTranslationOfPolished, englishTranslationOfOriginal }) { 
+        function displayExplanation(result) { 
             const node = explanationTemplate.content.cloneNode(true);
-            node.getElementById('polished-text-display').innerText = polishedVietnamese;
-            node.getElementById('explanation-text').innerText = explanation;
+            node.getElementById('polished-text-display').innerText = result.polishedVietnamese;
+            node.getElementById('english-text-display').innerText = result.englishTranslationOfPolished;
+            node.getElementById('chinese-text-display').innerText = result.chineseTranslationOfPolished;
+            node.getElementById('explanation-text').innerText = result.explanation;
             
-            // "Send Original" button is now instant, no API call needed.
             node.getElementById('use-original-btn').addEventListener('click', () => {
-                removeChoiceButtons(); 
-                sendToWebhook(`🇻🇳 *Vietnamese:*\n${originalMessage}\n\n🇬🇧 *English:*\n${englishTranslationOfOriginal}`);
+                removeChoiceButtons();
+                const textPayload = `🇻🇳 *Vietnamese:*\n${originalMessage}\n\n🇬🇧 *English:*\n${result.englishTranslationOfOriginal}\n\n🇨🇳 *Chinese:*\n${result.chineseTranslationOfOriginal}`;
+                sendToWebhook({ 'text': textPayload });
             });
 
             node.getElementById('use-polished-btn').addEventListener('click', () => {
                 removeChoiceButtons();
-                sendToWebhook(`🇻🇳 *Vietnamese:*\n${polishedVietnamese}\n\n🇬🇧 *English:*\n${englishTranslationOfPolished}`);
+                const textPayload = `🇻🇳 *Vietnamese:*\n${result.polishedVietnamese}\n\n🇬🇧 *English:*\n${result.englishTranslationOfPolished}\n\n🇨🇳 *Chinese:*\n${result.chineseTranslationOfPolished}`;
+                sendToWebhook({ 'text': textPayload });
             });
             chatContainer.appendChild(node); scrollToBottom();
         }
@@ -261,7 +285,6 @@
             lastAction.error = error;
             removeLoading();
             let userMessage = `Sorry, an error occurred: ${context}.`;
-            // All user-facing error messages are now in English for the developer.
             if (context === "Network connection error") {
                 userMessage = "You are not connected to the internet. Please check and try again.";
             } else if (context === "API connection error") {
@@ -269,7 +292,7 @@
             }
 
             displayErrorMessage(userMessage); 
-            toggleAllInputs(true); // Re-enable input for retry
+            toggleAllInputs(true);
             
             statusIndicator.classList.remove('bg-yellow-400', 'bg-green-400');
             statusIndicator.classList.add('bg-red-500');
@@ -281,4 +304,3 @@
     </script>
 </body>
 </html>
-
